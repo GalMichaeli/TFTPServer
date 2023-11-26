@@ -46,8 +46,7 @@ int check_args(int argc, char *argv[], input_t *in_data)
 	in_data->port = (unsigned short) port;
 	in_data->timeout = (unsigned short) timeout;
 	in_data->max_resends = (unsigned short) max_resends;
-	// printf("input args: port %hu, timeout %hu, max resends: %hu\n",
-	//		in_data->port, in_data->timeout, in_data->max_resends);
+	
 	return 0;
 }
 
@@ -171,12 +170,7 @@ int send_error(int errconst, int sfd, struct sockaddr_in *pcl_addr)
 			break;
 		}
 	default:
-		// printf("error: bad error code\n");
 		return -1;
-	}
-
-	if (retval < 0) {
-		// printf("error: sent error packet with wrong size\n");
 	}
 
 	return retval;
@@ -185,12 +179,12 @@ int send_error(int errconst, int sfd, struct sockaddr_in *pcl_addr)
 // Compare client addresses
 int checkClientAddress(struct sockaddr_in *receivedAddr, struct sockaddr_in *expectedAddr)
 {
-	// Compare the IP addresses
+	// Compare IP addresses
 	if (strcmp(inet_ntoa(receivedAddr->sin_addr), inet_ntoa(expectedAddr->sin_addr)) != 0) {
 		return 0;
 	}
 
-	// Compare the port numbers
+	// Compare port numbers
 	if (receivedAddr->sin_port != expectedAddr->sin_port) {
 		return 0;
 	}
@@ -210,14 +204,12 @@ int send_ack(unsigned short blockno, int sfd, struct sockaddr_in *pcl_addr)
 {
 	int retval;
 	ack_t ack = {htons(OP_ACK), htons(blockno)};
-	// printf("sending ACK: opcode %hu, blockno %hu, size %lu\n", OP_ACK, blockno, sizeof(ack_t));
+
 	retval = sendto(sfd, (void *) &ack, sizeof(ack_t), 0,
 					(struct sockaddr *) pcl_addr, sizeof(*pcl_addr));
 	
-	if (retval != sizeof(ack_t)) {
-		// printf("error: send ACK for block %hu failed\n", blockno);
+	if (retval != sizeof(ack_t))
 		return -ESYS;
-	}
 
 	return retval;
 }
@@ -285,20 +277,17 @@ int receive_data(int sfd, struct sockaddr_in *pcl_addr, unsigned short last_recv
 	if (retval < 0)
 		return -ESYS;
 
-	else if (retval == 0) {
-		// printf("Client has shut down\n");
+	else if (retval == 0)
 		return 0;
-	}
+
 	// Check if packet origin is currently serviced client
 	// and if it is not a WRQ packet
 	else if (!checkClientAddress(&temp_addr, pcl_addr)) {
-		// printf("error: received packet from wrong client\n");
 		if (send_error(EUP, sfd, &temp_addr) < 0)
 			return -ESYS;
 		return CONTINUE;		
 	}
 	else if (!data_packet(pdata)) {
-		// printf("error: received WRQ while expecting DATA\n");
 		if (send_error(EUP, sfd, &temp_addr) < 0)
 			return -ESYS;
 		return -EUP;		
@@ -313,7 +302,6 @@ int receive_data(int sfd, struct sockaddr_in *pcl_addr, unsigned short last_recv
 	// Check if the block number is correct
 	new_blockno = extract_blockno(pdata);
 	if (new_blockno != last_recv_block + 1) {
-		// printf("error: wrong block number in DATA packet: expected %hu, got %hu\n", last_recv_block + 1, new_blockno);
 		if (send_error(EBBN, sfd, &temp_addr) < 0)
 			return -ESYS;
 		return -EBBN;
@@ -324,20 +312,17 @@ int receive_data(int sfd, struct sockaddr_in *pcl_addr, unsigned short last_recv
 
 int service(int sfd, struct sockaddr_in *pcl_addr, input_t *in_data, char *file)
 {
-	// printf("\nin service()\n");
 	int fd, retval = 0, resend_counter = 0;
 	unsigned short last_recv_block = 0;
 	data_t data = { 0 };
 	fd_set read_fd_set;
 	struct timeval timeout = {in_data->timeout, 0};
 
-	// printf("creating file %s\n", file);
 	// Open requested file
 	fd = open(file, O_CREAT | O_EXCL | O_RDWR, 0777);
 
-	// check if file already exists
+	// Check if file already exists
 	if (fd < 0) {
-		// printf("error: creating file failed\n");
 		if (errno == EEXIST) {
 			if (send_error(EFAE, sfd, pcl_addr) < 0) {
 				exit_no_abandon();
@@ -347,19 +332,15 @@ int service(int sfd, struct sockaddr_in *pcl_addr, input_t *in_data, char *file)
 		exit_no_abandon();
 	}
 
-	// printf("file created successfuly, sending ack\n");
 	// Send WRQ ack
 	if (send_ack(last_recv_block, sfd, pcl_addr) < 0)
 		exit_abandon_tx(fd, file);
 	
 	while (1) {
-		// printf("in service() while\n");
 		FD_ZERO(&read_fd_set);
 		FD_SET(sfd, &read_fd_set);
 
 		retval = select(sfd + 1, &read_fd_set, NULL, NULL, &timeout);
-		// printf("returned from select #2, retval: %d, going to sleep\n", retval);
-		//sleep(SLEEP_TIME);
 
 		// Error in 'select()'
 		if (retval < 0)
@@ -367,8 +348,6 @@ int service(int sfd, struct sockaddr_in *pcl_addr, input_t *in_data, char *file)
 
 		// Timeout expired - resend ACK
 		if (retval == 0) {
-			// printf("timeout expired, ");
-			// printf("resend counter: %d\n", resend_counter);
 			resend_counter++;
 			if (resend_counter > in_data->max_resends) {
 				retval = -EAFT;
@@ -384,7 +363,6 @@ int service(int sfd, struct sockaddr_in *pcl_addr, input_t *in_data, char *file)
 		else { // Received data before timeout : retval > 0
 			resend_counter = 0;
 			retval = receive_data(sfd, pcl_addr, last_recv_block, &data);
-			// printf("returned from receive_data, retval: %d\n", retval);
 			
 			// Data packet is invalid
 			if (retval <= 0)
@@ -421,6 +399,5 @@ int service(int sfd, struct sockaddr_in *pcl_addr, input_t *in_data, char *file)
 	else if (retval < 0)
 		abandon_tx(fd, file);
 
-	// printf("returning from service\n");
 	return retval;
 }

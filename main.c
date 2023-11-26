@@ -35,32 +35,26 @@ int main(int argc, char *argv[])
 		int retval;
 		FD_ZERO(&read_fd_set);
 		FD_SET(sfd, &read_fd_set);
-		// wait on select for WRQ
+		// Wait on select for WRQ
 		retval = select(sfd + 1, &read_fd_set, NULL, NULL, NULL);
-		// printf("returned from select\n");
 		if (retval < 0)
 			exit_no_abandon();
 
 
-		// check if message is WRQ
+		// Check if message is WRQ
 		retval = recvfrom(sfd, (void *) buf, MAX_PKT_SIZE, 0,
 				  (struct sockaddr *) &cl_addr, &cl_len);
-		// printf("returned from recvfrom\n");
-		if (retval < 0) {
-			// printf("error: recvfrom failed\n");
+		if (retval < 0)
 			exit_no_abandon();
-		} 
-		else if (retval == 0) {
-			// printf("Client has shut down\n");
+
+		else if (retval == 0)
 			continue;
-		}
+
 		else if (buf_wrq(buf)) {
-			// printf("calling service\n");
 			if (service(sfd, &cl_addr, &in_data, (char *) &buf[2]) < 0) 
 				continue;	
 		}
 		else {
-			// printf("unknown user\n");
 			if (send_error(EUU, sfd, &cl_addr) < 0) {
 				exit_no_abandon();
 			}
